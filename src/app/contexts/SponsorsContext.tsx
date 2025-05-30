@@ -8,25 +8,33 @@ import { deleteMedia, uploadMedia } from '@/src/lib/api/media';
 import { mapToSponsor, sortByDate, formatDateTable, mapToDTO, removeDuplicates, sortByActiveAndDate, mapToCouponDTO } from '../utils/utils';
 import { useAuth } from './AuthContext';
 
-
-// Define the context type
 interface SponsorsContextType {
     sponsors: SponsorData[];
     userLevels: UserLevelDTO[];
+    stats: Stats;
     loading: boolean;
     error: Error | null;
+    fetchSponsorData: (type: string) => Promise<void>;
     addSponsor: (data: any) => Promise<void>;
     editSponsor: (id: string, data: any, removedMedia: MediaDTO[]) => Promise<void>;
     deleteSponsor: (id: string) => Promise<void>;
 }
 
-// Create context with undefined as default value
-const SponsorsContext = createContext<SponsorsContextType | undefined>(undefined);
+interface Stats {
+    total: number;
+    active: number;
+    inactive: number;
+}
 
-// Define props for provider component
 interface SponsorsProviderProps {
     children: ReactNode;
 }
+
+const SponsorsContext = createContext<SponsorsContextType | undefined>(undefined);
+
+// Cache configuration
+const CACHE_KEY = 'sponsors_cache';
+const CACHE_EXPIRATION = 30 * 60 * 1000; // 30 minutes
 
 export function SponsorsProvider({ children }: SponsorsProviderProps) {
     const { isAuthenticated } = useAuth();
@@ -35,27 +43,49 @@ export function SponsorsProvider({ children }: SponsorsProviderProps) {
     const [userLevels, setUserLevels] = useState<UserLevelDTO[]>([]);
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<Error | null>(null);
+    const [stats, setStats] = useState<Stats>({
+        total: 0,
+        active: 0,
+        inactive: 0
+    });
 
     useEffect(() => {
         if (isAuthenticated) {
+            // Check if we have any cached data
+            const loadCachedData = () => {
+                try {
+                    const cached = localStorage.getItem(CACHE_KEY);
+                    if (cached) {
+                        const cacheData = JSON.parse(cached);
+                        const isExpired = Date.now() - cacheData.timestamp > CACHE_EXPIRATION;
+
+                        if (!isExpired && cacheData.sponsors && cacheData.sponsors.length > 0) {
+                            setSponsors(cacheData.sponsors);
+                            return;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load cached data:', error);
+                }
+            };
+
+            loadCachedData();
             fetchData();
         }
     }, [isAuthenticated]);
 
     // useEffect(() => { sponsors.length > 0 && console.log(sponsors) }, [sponsors]);
 
-    // Fetch both user levels and sponsors in one operation
+    // Fetch user levels and statistics
     const fetchData = async () => {
         setLoading(true);
         setError(null);
 
         try {
-            // Fetching user levels
             const userLevelsData: UserLevelDTO[] = await productApi.getAllUserLevels();
             setUserLevels(userLevelsData);
 
-            // Fetching sponsors/products
-            await fetchSponsorsList(userLevelsData);
+            await fetchStats(userLevelsData);
         } catch (err) {
             console.error('Error fetching data:', err);
             setError(err instanceof Error ? err : new Error('Failed to fetch data'));
@@ -64,37 +94,166 @@ export function SponsorsProvider({ children }: SponsorsProviderProps) {
         }
     };
 
-    // Fetch sponsors/products from DB and combine to one list
-    const fetchSponsorsList = async (levels: UserLevelDTO[]) => {
+    // Fetch sponsors/products statistics. Can be optimzied with an API to return necessary stat data 
+    const fetchStats = async (levels: UserLevelDTO[]) => {
         try {
-            const sponsorsData: SponsorDTO[] = await sponsorApi.getAll();
+            // Get all Sponsor data
+            const allSponsorData: SponsorDTO[] = await sponsorApi.getAll();
 
-            // Get Redeem Shop products
-            let redeemProducts: ProductDTO[] = await productApi.getAllRedeem();
-
-            // Get Star Store products for each level
+            // Get all Product data
+            const redeemProducts: ProductDTO[] = await productApi.getAllRedeem();
             const starStorePromises = levels.map((level: UserLevelDTO) =>
                 productApi.getAllStarByLevel(level.id)
             );
-            const starStoreResults = await Promise.all(starStorePromises);
-            const allStarStoreProducts = starStoreResults.flat();
+            const starStoreProducts = await Promise.all(starStorePromises);
+            const allProductData = removeDuplicates([...redeemProducts, ...starStoreProducts.flat()]);
 
-            const allProducts = [...redeemProducts, ...allStarStoreProducts];
-            const uniqueProducts = removeDuplicates(allProducts);
+            const allSponsors = [...allSponsorData, ...allProductData]
+            setStats({
+                total: allSponsors.length,
+                active: allSponsors.filter(sponsor => sponsor.active === true).length,
+                inactive: allSponsors.filter(sponsor => sponsor.active === false).length
+            })
+        } catch (err) {
+            console.error('Error fetching sponsor statistics:', err);
+            setError(err instanceof Error ? err : new Error('Failed to fetch statistics'));
+        }
+    };
 
-            const formattedSponsors = sponsorsData.map((sponsor: SponsorDTO) => (
-                mapToSponsor(sponsor, Array.isArray(sponsor.created) ? "Hot Flash" : "Title")
-            ));
-            const formattedProducts = uniqueProducts.map((product: ProductDTO) => (
-                mapToSponsor(product, product?.userLevel ? "Star Store" : "Redeem Shop")
-            ));
+    const updateStatData = (newData: SponsorData | null, add: boolean, prevData: SponsorData | null, remove: boolean) => {
+        if (add && newData) {
+            setStats({
+                total: stats.total + 1,
+                active: newData.active ? stats.active + 1 : stats.active,
+                inactive: !newData.active ? stats.inactive + 1 : stats.inactive,
+            })
+        } else if (remove && prevData) {
+            setStats({
+                total: stats.total - 1,
+                active: prevData.active ? stats.active - 1 : stats.active,
+                inactive: !prevData.active ? stats.inactive - 1 : stats.inactive,
+            })
+        } else if (prevData!.active != newData!.active) {
+            if (newData!.active) {
+                setStats({
+                    ...stats,
+                    active: stats.active + 1,
+                    inactive: stats.inactive - 1
+                })
+            } else {
+                setStats({
+                    ...stats,
+                    active: stats.active - 1,
+                    inactive: stats.inactive + 1
+                })
+            }
+        }
+    };
 
-            // const allSponsors = sortByDate([...formattedSponsors, ...formattedProducts]);
-            const allSponsors = sortByActiveAndDate([...formattedSponsors, ...formattedProducts]);
-            setSponsors(allSponsors);
+    // Fetch sponsors/products from DB given a sponsor type (Title, Redeem, Star, Flash)
+    const fetchSponsorData = async (type: string) => {
+        try {
+            setLoading(true);
+
+            // Try to load from cache first
+            const cachedSponsors = loadFromCache(type);
+            if (cachedSponsors) {
+                setSponsors(cachedSponsors);
+                setLoading(false);
+                return;
+            }
+
+            let sponsorData: SponsorDTO[] | ProductDTO[] = [];
+            let sponsorType: string;
+            switch (type) {
+                case 'Title':
+                    sponsorData = await sponsorApi.getAll();
+                    sponsorType = "Title";
+                    break;
+                case 'Redeem':
+                    sponsorData = await productApi.getAllRedeem();
+                    sponsorType = "Redeem Shop";
+                    break;
+                case 'Star':
+                    const starStorePromises = userLevels.map((level: UserLevelDTO) =>
+                        productApi.getAllStarByLevel(level.id)
+                    );
+                    const starStoreResults = await Promise.all(starStorePromises);
+                    sponsorData = removeDuplicates(starStoreResults.flat());
+                    sponsorType = "Star Store";
+                    break;
+                case 'Flash':
+                    // *** NEED an API to grab only flashData ***
+                    sponsorData = [];
+                    sponsorType = "Hot Flash";
+                    break;
+                default:
+                    // Default to Title data
+                    sponsorData = await sponsorApi.getAll();
+                    sponsorType = "Title";
+                    break;
+            }
+
+            // Sort and set the sponsors data
+            const sortedSponsors = sortByActiveAndDate(
+                sponsorData.map((sponsor: SponsorDTO | ProductDTO) => (
+                    mapToSponsor(sponsor, sponsorType)
+                ))
+            );
+            setSponsors(sortedSponsors);
+
+            // Save to cache
+            saveToCache(sortedSponsors, type);
         } catch (err) {
             console.error('Error fetching sponsors:', err);
             setError(err instanceof Error ? err : new Error('Failed to fetch sponsors'));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Helper function to save sponsor data to a cache(local storage)
+    const saveToCache = (data: SponsorData[], type: string) => {
+        try {
+            const cacheData = {
+                sponsors: data,
+                type: type,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+        } catch (error) {
+            console.error('Failed to save to cache:', error);
+        }
+    };
+
+    // Helper function to load sponsor data from cache(local storage)
+    const loadFromCache = (type: string): SponsorData[] | null => {
+        try {
+            const cached = localStorage.getItem(CACHE_KEY);
+            if (!cached) return null;
+
+            const cacheData = JSON.parse(cached);
+
+            // Check if cache is expired or different type
+            const isExpired = Date.now() - cacheData.timestamp > CACHE_EXPIRATION;
+            if (isExpired || cacheData.type !== type) {
+                localStorage.removeItem(CACHE_KEY);
+                return null;
+            }
+            return cacheData.sponsors;
+        } catch (error) {
+            console.error('Failed to load from cache:', error);
+            localStorage.removeItem(CACHE_KEY);
+            return null;
+        }
+    };
+
+    // Helper function to clear sponsor data from the cache(local storage)
+    const clearCache = () => {
+        try {
+            localStorage.removeItem(CACHE_KEY);
+        } catch (error) {
+            console.error('Failed to clear cache:', error);
         }
     };
 
@@ -133,29 +292,38 @@ export function SponsorsProvider({ children }: SponsorsProviderProps) {
                 }
             }
 
-            // Step 3. Call api to store media data
+            // Step 3. Handle media uploads properly with Promise.all
             if (sponsorCreated && mediaData.length > 0) {
-                mediaData.forEach(async (media: MediaDTO) => {
-                    const temp = media;
-
-                    const result = await uploadMedia(media, type, data.id);
-                    if (result.success) {
-                        media.url = result.fileUrl
-                        delete media.previewUrl
-                        delete media.file
-                    } else {
-                        media = temp;
+                const uploadPromises = mediaData.map(async (media: MediaDTO) => {
+                    try {
+                        const result = await uploadMedia(media, type, data.id);
+                        if (result && result.success) {
+                            media.url = result.fileUrl;
+                            delete media.previewUrl;
+                            delete media.file;
+                        }
+                        return media;
+                    } catch (error) {
+                        console.error('Error uploading media:', error);
+                        // Clean up properties even on error
+                        delete media.previewUrl;
+                        delete media.file;
+                        return media;
                     }
                 });
+
+                await Promise.all(uploadPromises);
+                console.log('Updated media after upload:', data.media);
             }
 
-            // Step 4. Update local state
+            // Step 4. Update stats and local state
+            updateStatData(data, true, null, false);
+            clearCache();
             setSponsors(prevSponsors => {
-                const updatedSponsors = [...prevSponsors, data];
-                // return sortByDate(updatedSponsors);
-                return sortByActiveAndDate(updatedSponsors)
+                const updatedSponsors = sortByActiveAndDate([...prevSponsors, data]);
+                saveToCache(updatedSponsors, data.type);
+                return updatedSponsors;
             });
-
         } catch (err) {
             console.error('Error adding sponsor:', err);
             setError(err instanceof Error ? err : new Error('Failed to add sponsor'));
@@ -242,35 +410,52 @@ export function SponsorsProvider({ children }: SponsorsProviderProps) {
             // }
 
             // Step 4. Call api to store media data in s3
-            if (mediaData) {
-                try {
-                    mediaData.forEach(async (media: MediaDTO) => {
-                        if (media.previewUrl || media.file) {
+            if (mediaData.length > 0) {
+                // Filter media that needs to be uploaded (has previewUrl or file)
+                const mediaToUpload = mediaData.filter(media => media.previewUrl || media.file);
+
+                if (mediaToUpload.length > 0) {
+                    const uploadPromises = mediaToUpload.map(async (media: MediaDTO) => {
+                        try {
                             const result = await uploadMedia(media, type, id);
-                            if (result.success) {
-                                media.url = result.fileUrl
-                                delete media.previewUrl
-                                delete media.file
+                            if (result && result.success) {
+                                media.url = result.fileUrl;
+                                delete media.previewUrl;
+                                delete media.file;
                             }
+                            return media;
+                        } catch (error) {
+                            console.error('Error uploading media:', error);
+                            // Clean up properties even on error
+                            delete media.previewUrl;
+                            delete media.file;
+                            return media;
                         }
                     });
-                } catch (s3Error) {
-                    console.error('Error adding sponsor media files:', s3Error);
+
+                    await Promise.all(uploadPromises);
+                    console.log('Updated media after upload:', data.media);
                 }
             }
 
-            // Step 5. Call api to delete media data in s3 
+            // Step 5. Handle media deletions with Promise.all
             if (removedMedia.length > 0) {
-                try {
-                    removedMedia.forEach(async (media: MediaDTO) => {
-                        await deleteMedia(media, type, id)
-                    });
-                } catch (s3Error) {
-                    console.error('Error deleting sponsor media files:', s3Error);
-                }
+                const deletePromises = removedMedia.map(async (media: MediaDTO) => {
+                    try {
+                        await deleteMedia(media, type, id);
+                        return media;
+                    } catch (error) {
+                        console.error('Error deleting media:', error);
+                        return media;
+                    }
+                });
+
+                await Promise.all(deletePromises);
+                console.log('Deleted media:', removedMedia);
             }
 
-            // Step 6. Update local state
+            // Step 6. Update stats and local state
+            updateStatData(data, false, sponsorToEdit, false);
             setSponsors(prevSponsors => {
                 const updatedSponsor = prevSponsors.map(sponsor =>
                     sponsor.id === id ? data : sponsor
@@ -278,6 +463,7 @@ export function SponsorsProvider({ children }: SponsorsProviderProps) {
                 // return sortByDate(updatedSponsor)
                 return sortByActiveAndDate(updatedSponsor)
             });
+            clearCache();
         } catch (err) {
             console.error('Error updating sponsor:', err);
             setError(err instanceof Error ? err : new Error('Failed to update sponsor'));
@@ -324,11 +510,12 @@ export function SponsorsProvider({ children }: SponsorsProviderProps) {
                 console.error('Error deleting sponsor media files:', s3Error);
             }
 
-            // 3. Update local state to remove the deleted sponsor
+            // 3. Update stats and local state to remove the deleted sponsor
+            updateStatData(null, false, sponsorToDelete, true);
             setSponsors(prevSponsors =>
                 prevSponsors.filter(sponsor => sponsor.id !== id)
             );
-
+            clearCache();
         } catch (err) {
             console.error('Error deleting sponsor:', err);
             setError(err instanceof Error ? err : new Error('Failed to delete sponsor'));
@@ -340,8 +527,10 @@ export function SponsorsProvider({ children }: SponsorsProviderProps) {
     const value = {
         sponsors,
         userLevels,
+        stats,
         loading,
         error,
+        fetchSponsorData,
         addSponsor,
         editSponsor,
         deleteSponsor

@@ -1,36 +1,168 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Axis Sponsor Portal
+
+A Next.js web application for managing sponsor and advertiser content in the Axis mobile application. Built for Axis employees and administrators to create, edit, and manage sponsor entries with associated media assets.
+
+## Features
+
+- **Sponsor Management** - Create and manage four types of sponsors (Title, Hot Flash, Redeem Shop, Star Store)
+- **Media Upload** - Upload and validate images/videos with automatic S3 storage
+- **Google Authentication** - Secure login using Google OAuth
+- **Real-time Sync** - Automatic synchronization with mobile application
+- **Form Validation** - Comprehensive validation for all sponsor data
+- **Responsive Design** - Modern dark theme with mobile-friendly interface
+
+## Tech Stack
+
+- **Frontend**: React 19, Next.js 15, TypeScript, Tailwind CSS 4
+- **Authentication**: Firebase Auth with Google OAuth
+- **Backend**: Swift Vapor API, PostgreSQL Database
+- **Storage**: AWS S3 for media assets
+- **State Management**: React Context API
+
+## Prerequisites
+
+- Node.js 18+ and npm
+- Google Cloud Platform account (for OAuth)
+- AWS account (for S3 storage)
+- Access to Axis backend API
 
 ## Getting Started
 
-First, run the development server:
+### 1. Clone the repository
+
+```bash
+git clone [repository-url]
+cd axis-sponsor-portal
+```
+
+### 2. Install dependencies
+
+```bash
+npm install
+```
+
+### 3. Environment Setup
+
+Contact the development team for a `.env` file. Place this file inside the root directory of the project
+
+### 4. Run the development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/
+├── app/
+│   ├── api/                 # Next.js API routes (proxy layer)
+│   ├── components/          # Reusable UI components
+│   ├── contexts/           # React Context providers
+│   ├── types/              # TypeScript type definitions
+│   ├── utils/              # Utility functions
+│   ├── [id]/               # Dynamic edit pages
+│   ├── add-sponsor/        # Add sponsor page
+│   └── login/              # Authentication page
+├── lib/
+│   ├── api/                # API client functions
+│   └── config/             # Configuration files
+└── middleware.ts           # Authentication middleware
+```
 
-## Learn More
+## Available Scripts
 
-To learn more about Next.js, take a look at the following resources:
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Authentication
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The application uses Google OAuth for authentication. Users must have:
 
-## Deploy on Vercel
+- A Google account registered in the Axis mobile application
+- Appropriate permissions to access the sponsor portal
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Data Types
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The application manages four sponsor/advertiser types:
+
+- **Title** - Main sponsor entries (uses `sponsors` table)
+- **Hot Flash** - Time-limited promotions (uses `sponsors` table)
+- **Redeem Shop** - Point redemption products (uses `products` table)
+- **Star Store** - Level-restricted products (uses `products` table)
+
+## Media Requirements
+
+### Images
+
+- **Format**: JPEG only
+- **Aspect Ratios**: 16:9 or 9:16 (depending on section)
+- **Minimum Resolution**: 1000x562px (16:9) or 563x1000px (9:16)
+
+### Videos
+
+- **Format**: MP4, MOV
+- **Aspect Ratios**: 16:9 or 9:16
+- **Minimum Resolution**: 640x480px
+
+## API Integration
+
+The application uses a proxy pattern where Next.js API routes forward requests to the Swift Vapor backend. All API calls are authenticated using HTTP-only cookies.
+
+## Deployment
+
+### Environment Variables
+
+Ensure all environment variables are configured in your deployment environment.
+
+### Build Process
+
+```bash
+npm run build
+npm run start
+```
+
+### Production Considerations
+
+- Configure CORS for backend API
+- Set up proper S3 bucket policies
+- Ensure SSL certificates are installed
+- Configure Firebase project for production domain
+
+## Troubleshooting
+
+### Common Issues
+
+**Authentication Loops**
+
+- Verify Firebase configuration
+- Check cookie settings and domain configuration
+
+**Media Upload Failures**
+
+- Confirm S3 credentials and bucket permissions
+- Verify file format and size requirements
+
+**API Connection Issues**
+
+- Check backend API URL and accessibility
+- Verify authentication token configuration
+
+## Contributing
+
+1. Follow TypeScript strict mode requirements
+2. Use ESLint for code formatting
+3. Test all form validations thoroughly
+4. Ensure responsive design compatibility
+
+## Support
+
+For technical issues or questions about the Axis Sponsor Portal, contact the development team or refer to the comprehensive technical documentation.
+
+---
+
+**Note**: This application is for internal Axis use only and requires proper authentication and authorization to access.

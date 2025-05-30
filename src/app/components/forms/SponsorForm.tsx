@@ -1,6 +1,6 @@
 'use client'
 import * as React from 'react';
-import { useState, useEffect, FormEvent, ChangeEvent, useRef } from 'react';
+import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -27,8 +27,6 @@ import { formatDateSponsor, generateUUID } from '../../utils/utils';
 import MediaForm from './MediaForm';
 import MultipleDateRange from '../MultipleDateRange';
 
-
-// Move emptyFormData creation inside the component to generate fresh UUIDs
 const createEmptyFormData = (): SponsorData => ({
     id: generateUUID(), // Fresh UUID each time
     sponsor: "",
@@ -81,7 +79,6 @@ export default function SponsorForm({
 }: SponsorFormProps) {
     const { addSponsor, editSponsor } = useSponsorsContext();
     const router = useRouter();
-    const initialLoadComplete = useRef(false);
 
     // Form States
     const [formData, setFormData] = useState<SponsorData>(
@@ -118,23 +115,19 @@ export default function SponsorForm({
         setFormData({ ...createEmptyFormData(), type: formType })
         setMediaList([]);
         setErrors(emptyErrors);
-
-        initialLoadComplete.current = false;
     }, [formType]);
 
     useEffect(() => {
-        if (FormData && !initialLoadComplete.current) {
+        if (FormData) {
             setFormData(prevData => ({
-                ...createEmptyFormData(),
-                ...prevData,
-                ...FormData,
+                ...createEmptyFormData(),  // Start with empty defaults
+                ...prevData,       // Keep any current values
+                ...FormData,       // Override with provided data
             }));
 
             if (MediaList) {
                 setMediaList(MediaList);
             }
-
-            initialLoadComplete.current = true;
         }
     }, [FormData, MediaList]);
 
@@ -841,7 +834,7 @@ export default function SponsorForm({
                                         onBeginDateChange={(dates) => {
                                             setFormData((prev: any) => ({
                                                 ...prev,
-                                                beginDate: dates
+                                                beginDate: [...dates] // Create new array reference
                                             }));
 
                                             // Clear any errors
@@ -853,7 +846,7 @@ export default function SponsorForm({
                                         onEndDateChange={(dates) => {
                                             setFormData((prev: any) => ({
                                                 ...prev,
-                                                endDate: dates
+                                                endDate: [...dates] // Create new array reference
                                             }));
 
                                             // Clear any errors
@@ -906,7 +899,6 @@ export default function SponsorForm({
                                                 <p className="mt-2 text-sm text-red-500">{errors.endDate}</p>
                                             )}
                                         </div> */}
-
                                     </>
                                 )}
 

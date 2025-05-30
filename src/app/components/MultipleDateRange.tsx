@@ -1,5 +1,4 @@
-// components/MultipleDateRange.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { formatDateSponsor } from '../utils/utils';
 import { FiPlus, FiTrash, FiClock } from 'react-icons/fi';
 
@@ -33,6 +32,9 @@ const MultipleDateRange = ({
     disabled = false,
     includeTime = false
 }: DateRangeInputProps) => {
+    const isInitializing = useRef(true);
+    const lastPropsHash = useRef('');
+
     // Helper function to parse ISO datetime string
     const parseDateTime = (isoString: string | Date): { date: string, time: string } => {
         if (!isoString) return { date: '', time: '' };
@@ -40,31 +42,24 @@ const MultipleDateRange = ({
         try {
             const dateObj = typeof isoString === 'string' ? new Date(isoString) : isoString;
             const dateStr = dateObj.toISOString().split('T')[0]; // Gets YYYY-MM-DD
-            const timeStr = dateObj.toTimeString().split(' ')[0].substring(0, 5); // Gets HH:MM
+
+            // Fix: Use UTC time instead of local time to prevent timezone issues
+            const hours = dateObj.getUTCHours().toString().padStart(2, '0');
+            const minutes = dateObj.getUTCMinutes().toString().padStart(2, '0');
+            const timeStr = `${hours}:${minutes}`;
+
             return { date: dateStr, time: timeStr };
         } catch (error) {
             return { date: '', time: '' };
         }
     };
 
-    // Helper function to format single date for date input
-    const formatSingleDate = (date: string | Date | undefined): string => {
-        if (!date) return '';
-        if (typeof date === 'string') {
-            // If it's already an ISO string, extract just the date part
-            if (date.includes('T')) {
-                return date.split('T')[0];
-            }
-            return formatDateSponsor(date);
-        }
-        return formatDateSponsor(date.toString());
-    };
-
     // Initialize date ranges from props
     const initializeDateRanges = (): DateTimeRange[] => {
         if (Array.isArray(beginDate) && Array.isArray(endDate)) {
-            return beginDate.map((start, index) => {
-                const startParsed = parseDateTime(start);
+            const maxLength = Math.max(beginDate.length, endDate.length);
+            return Array.from({ length: maxLength }, (_, index) => {
+                const startParsed = parseDateTime(beginDate[index] || '');
                 const endParsed = parseDateTime(endDate[index] || '');
 
                 return {
@@ -98,13 +93,29 @@ const MultipleDateRange = ({
         }];
     });
 
-    // Update local state when props change
+    // Create a hash of the current props to detect meaningful changes
+    const createPropsHash = () => {
+        return JSON.stringify({
+            beginDate: Array.isArray(beginDate) ? beginDate : [beginDate],
+            endDate: Array.isArray(endDate) ? endDate : [endDate],
+            includeTime
+        });
+    };
+
+    // Update local state when props change, but only if they've actually changed
     useEffect(() => {
-        const newRanges = initializeDateRanges();
-        if (newRanges.length > 0) {
-            setDateRanges(newRanges);
+        const currentPropsHash = createPropsHash();
+
+        // Only update if this is the initial load or if props have actually changed
+        if (isInitializing.current || currentPropsHash !== lastPropsHash.current) {
+            const newRanges = initializeDateRanges();
+            if (newRanges.length > 0) {
+                setDateRanges(newRanges);
+            }
+            lastPropsHash.current = currentPropsHash;
+            isInitializing.current = false;
         }
-    }, [beginDate, endDate, includeTime]);
+    }, [JSON.stringify(beginDate), JSON.stringify(endDate), includeTime]);
 
     const addDateRange = () => {
         const newRanges = [...dateRanges, { beginDate: '', endDate: '', beginTime: '', endTime: '' }];
@@ -120,8 +131,17 @@ const MultipleDateRange = ({
     };
 
     const handleDateChange = (index: number, field: keyof DateTimeRange, value: string) => {
-        const newRanges = [...dateRanges];
-        newRanges[index][field] = value;
+        // Create a deep copy to avoid mutations
+        const newRanges = dateRanges.map((range, i) => {
+            if (i === index) {
+                return {
+                    ...range,
+                    [field]: value
+                };
+            }
+            return { ...range }; // Create new object reference for other ranges too
+        });
+
         setDateRanges(newRanges);
         updateParent(newRanges);
     };
@@ -143,23 +163,23 @@ const MultipleDateRange = ({
                 return range.endDate ? `${range.endDate}T00:00:00Z` : '';
             });
 
-            onBeginDateChange(combinedBeginDates);
-            onEndDateChange(combinedEndDates);
+            onBeginDateChange([...combinedBeginDates]); // Create new arrays
+            onEndDateChange([...combinedEndDates]);
         } else {
             // For date-only, keep existing behavior
-            onBeginDateChange(ranges.map(range =>
+            onBeginDateChange([...ranges.map(range =>
                 range.beginDate ? `${range.beginDate}T00:00:00Z` : ''
-            ));
-            onEndDateChange(ranges.map(range =>
+            )]);
+            onEndDateChange([...ranges.map(range =>
                 range.endDate ? `${range.endDate}T00:00:00Z` : ''
-            ));
+            )]);
         }
     };
 
     return (
         <div className="pb-6 border-b border-slate-700">
             {dateRanges.map((range, index) => (
-                <div key={index} className="mb-4 p-4 bg-slate-800 rounded-lg">
+                <div key={`range-${index}`} className="mb-4 p-4 bg-slate-800 rounded-lg">
                     <div className="flex justify-between items-center mb-2">
                         <h4 className="text-sm font-medium text-white">
                             {includeTime ? `Date & Time Range ${index + 1}` : `Date Range ${index + 1}`}

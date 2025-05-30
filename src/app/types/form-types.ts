@@ -25,6 +25,7 @@ export interface SponsorDTO {
     urlTitle?: string;
     glowing?: boolean;
     order?: number;
+    active?: boolean;
     created?: Date;
     updated?: Date;
 }

@@ -48,6 +48,10 @@ export default function EditSponsor({ params }: { params: Promise<EditSponsorPro
         }
     }, [id, sponsors]);
 
+    useEffect(() => {
+        console.log(sponsors);
+    }, [sponsors])
+
     // Handle sponsor deletion
     const handleDeleteSponsor = async () => {
         setDeleteLoading(true);

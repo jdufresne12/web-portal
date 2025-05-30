@@ -73,7 +73,7 @@ export function mapToSponsor(data: SponsorDTO | ProductDTO, type: String): Spons
             urlTitle: SponsorData.urlTitle || '',
             glowing: SponsorData.glowing,
             order: SponsorData.order,
-            active: /*SponsorData?.active*/ SponsorData.title ? true : false,
+            active: SponsorData?.active,
             // beginDate: SponsorData?.beginDate || "",
             // endDate: SponsorData?.endDate || "",
             media: SponsorData.media?.map((media: MediaDTO) => ({

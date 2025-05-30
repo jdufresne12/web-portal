@@ -62,7 +62,7 @@ export default function AddSponsor() {
                                 onChange={(e) => setSponsorType(e.target.value)}
                             >
                                 {sponsorTypes.map(type => (
-                                    <option key={type} value={type} disabled={type === 'Hot Flash' ? false : false}>{type}</option>
+                                    <option key={type} value={type} disabled={type === 'Hot Flash' ? true : false}>{type}</option>
                                 ))}
                             </select>
                         </div>

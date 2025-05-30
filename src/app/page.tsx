@@ -1,6 +1,6 @@
 'use client'
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Head from 'next/head';
 import { FiPlusCircle, FiActivity, FiDatabase } from 'react-icons/fi';
@@ -13,6 +13,7 @@ import ActionButton from './components/ActionButton';
 import TabBar from './components/TabBar';
 import SponsorTable from './components/SponsorTable';
 import StatsCards from './components/StatsCards';
+import Pagination from './components/Pagination';
 
 // Import data
 import { useSponsorsContext } from './contexts/SponsorsContext';
@@ -25,38 +26,15 @@ interface Stats {
 }
 
 export default function Home() {
-  const { sponsors, loading } = useSponsorsContext();
+  const { sponsors, stats, loading, fetchSponsorData } = useSponsorsContext();
 
-  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>('All');
-  const [stats, setStats] = useState<Stats>({
-    total: 0,
-    active: 0,
-    inactive: 0
-  });
-
-  // Fetch sponsors data
-  useEffect(() => {
-    const fetchSponsors = async () => {
-      try {
-        const active = sponsors.filter(sponsor => sponsor.active === true).length;
-        setStats({
-          total: sponsors.length,
-          active: active,
-          inactive: sponsors.length - active
-        })
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Error fetching sponsors:', error);
-        setIsLoading(false);
-      }
-    };
-
-    fetchSponsors();
-  }, [sponsors]);
+  const [sponsorTypeTab, setSponsorTypeTab] = useState<string>('Title');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage] = useState<number>(10);
 
   // Filter sponsors based on active tab
-  const filteredSponsors = (): SponsorData[] => {
+  const filteredSponsors = useMemo((): SponsorData[] => {
     switch (activeTab) {
       case 'Active':
         return sponsors.filter(sponsor => sponsor.active);
@@ -65,9 +43,34 @@ export default function Home() {
       default:
         return sponsors;
     }
+  }, [sponsors, activeTab]);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredSponsors.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedSponsors = filteredSponsors.slice(startIndex, endIndex);
+
+  // Handles pagination page and sponsor data state updated
+  useEffect(() => {
+    setCurrentPage(1);
+    fetchSponsorData(sponsorTypeTab);
+  }, [activeTab, sponsorTypeTab]);
+
+  useEffect(() => {
+    console.log(sponsors)
+  }, [])
+
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    const tableElement = document.querySelector('[data-table-container]');
+    if (tableElement) {
+      tableElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
-  // Add sponsor button element2
+  // Add sponsor button element
   const addSponsorButton = (
     <Link href="/add-sponsor">
       <ActionButton
@@ -111,28 +114,44 @@ export default function Home() {
           />
 
           <div className="border-t border-slate-700 px-6 py-4">
-            <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
+            <TabBar
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              sponsorTypeTab={sponsorTypeTab}
+              setSponsorTypeTab={setSponsorTypeTab}
+            />
           </div>
         </Card>
 
         {/* Table Section */}
-        <Card>
+        <Card data-table-container>
           <SectionHeader
             title="Sponsors List"
             description={
               activeTab === 'All'
-                ? 'Showing all sponsors'
+                ? `Showing all sponsors (${filteredSponsors.length} total)`
                 : activeTab === 'Active'
-                  ? 'Showing only active sponsors'
-                  : 'Showing only inactive sponsors'
+                  ? `Showing only active sponsors (${filteredSponsors.length} total)`
+                  : `Showing only inactive sponsors (${filteredSponsors.length} total)`
             }
           />
 
           <div className="border-t border-slate-700">
-            {isLoading || loading ? (
+            {loading ? (
               <LoadingSpinner size="md" color="gold" />
             ) : (
-              <SponsorTable sponsors={filteredSponsors()} />
+              <>
+                <SponsorTable sponsors={paginatedSponsors} />
+                {filteredSponsors.length > 0 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalItems={filteredSponsors.length}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={handlePageChange}
+                  />
+                )}
+              </>
             )}
           </div>
         </Card>
